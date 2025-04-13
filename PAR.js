@@ -48,9 +48,8 @@ document.addEventListener('DOMContentLoaded', function() {
     document.addEventListener('input', function(e) {
         // Handle dynamically created PAR amount inputs
         if (e.target.matches('.par-amount, .amount, [name="amount[]"]')) {
-            const value = e.target.value.replace(/[^\d.-]/g, '');
-            const numericValue = parseFloat(value) || 0;
-            e.target.value = formatCurrency(numericValue);
+            const value = e.target.value.replace(/[^0-9]/g, '');
+            e.target.value = formatNumber(value);
             calculateParTotal();
         }
         // Handle dynamically created PAR quantity inputs
@@ -104,7 +103,7 @@ function displayPARData(pars) {
     
     if (pars.length === 0) {
         const emptyRow = document.createElement('tr');
-        emptyRow.innerHTML = `<td colspan="7" class="text-center">No PAR records found</td>`;
+        emptyRow.innerHTML = `<td colspan="6" class="text-center">No PAR records found</td>`;
         tbody.appendChild(emptyRow);
         return;
     }
@@ -113,11 +112,10 @@ function displayPARData(pars) {
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${par.par_no || ''}</td>
-            <td>${par.entity_name || ''}</td>
-            <td>${par.received_by_name || ''}</td>
-            <td>${par.department || ''}</td>
             <td>${par.date_acquired || ''}</td>
-            <td>${formatCurrency(par.total_amount) || '0.00'}</td>
+            <td>${par.property_number || ''}</td>
+            <td>${par.received_by_name || ''}</td>
+            <td>${formatNumber(par.total_amount || 0)}</td>
             <td>
                 <div class="btn-group">
                     <button type="button" class="btn btn-sm btn-info view-par" data-par-id="${par.par_id}">
@@ -134,9 +132,6 @@ function displayPARData(pars) {
         `;
         tbody.appendChild(row);
     });
-    
-    // Add event listeners to action buttons
-    addPARButtonEventListeners();
 }
 
 /**
@@ -221,75 +216,73 @@ function editPAR(parId) {
     showLoading();
     
     fetch(`get_par.php?id=${parId}`)
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`Server returned ${response.status} ${response.statusText}`);
-            }
-            return response.json();
-        })
+        .then(response => response.json())
         .then(data => {
             if (data.success) {
-                // Populate form with PAR data
-                const parModal = new bootstrap.Modal(document.getElementById('parModal'));
+                const modalElement = document.getElementById('parModal');
+                if (!modalElement) {
+                    throw new Error('Modal element not found');
+                }
+
+                let parModal;
+                try {
+                    parModal = new bootstrap.Modal(modalElement);
+                } catch (e) {
+                    parModal = bootstrap.Modal.getInstance(modalElement);
+                }
+
                 const parForm = document.getElementById('parForm');
+                if (!parForm) {
+                    throw new Error('PAR form not found');
+                }
+
+                // Reset form
+                parForm.reset();
                 
-                if (parForm) {
-                    // Reset form
-                    parForm.reset();
-                    
-                    // Set form fields
-                    parForm.querySelector('[name="par_id"]').value = data.data.par_id;
-                    parForm.querySelector('[name="par_no"]').value = data.data.par_no;
-                    parForm.querySelector('[name="entity_name"]').value = data.data.entity_name;
-                    parForm.querySelector('[name="received_by"]').value = data.data.received_by_name;
-                    
-                    if (parForm.querySelector('[name="position"]')) {
-                        parForm.querySelector('[name="position"]').value = data.data.position;
-                    }
-                    
-                    if (parForm.querySelector('[name="department"]')) {
-                        parForm.querySelector('[name="department"]').value = data.data.department;
-                    }
-                    
-                    parForm.querySelector('[name="date_acquired"]').value = data.data.date_acquired;
-                    
-                    if (parForm.querySelector('[name="remarks"]')) {
-                        parForm.querySelector('[name="remarks"]').value = data.data.remarks;
-                    }
-                    
-                    // Clear existing PAR items
-                    const tbody = document.getElementById('parItemsTable').querySelector('tbody');
+                // Set form fields
+                parForm.querySelector('[name="par_id"]').value = data.data.par_id;
+                parForm.querySelector('[name="par_no"]').value = data.data.par_no;
+                parForm.querySelector('[name="entity_name"]').value = data.data.entity_name;
+                parForm.querySelector('[name="received_by"]').value = data.data.received_by_name;
+                
+                const positionField = parForm.querySelector('[name="position"]');
+                if (positionField) positionField.value = data.data.position || '';
+                
+                const departmentField = parForm.querySelector('[name="department"]');
+                if (departmentField) departmentField.value = data.data.department || '';
+                
+                parForm.querySelector('[name="date_acquired"]').value = data.data.date_acquired || '';
+                
+                const remarksField = parForm.querySelector('[name="remarks"]');
+                if (remarksField) remarksField.value = data.data.remarks || '';
+                
+                // Clear and populate items
+                const tbody = document.getElementById('parItemsTable')?.querySelector('tbody');
+                if (tbody) {
                     tbody.innerHTML = '';
-                    
-                    // Add PAR items
-                    if (data.data.items && data.data.items.length > 0) {
-                        data.data.items.forEach(item => {
-                            addParRowWithData(item);
-                        });
+                    if (data.data.items?.length > 0) {
+                        data.data.items.forEach(item => addParRowWithData(item));
                     } else {
                         addInitialParRow();
                     }
-                    
-                    // Calculate total
-                    calculateParTotal();
-                    
-                    // Update modal title
-                    document.getElementById('parModalTitle').textContent = 'Edit Property Acknowledgement Receipt';
-                    
-                    // Show modal
-                    parModal.show();
                 }
+                
+                calculateParTotal();
+                
+                // Update modal title and show
+                const titleElement = document.getElementById('parModalTitle');
+                if (titleElement) titleElement.textContent = 'Edit Property Acknowledgement Receipt';
+                
+                if (parModal) parModal.show();
             } else {
-                showError(data.message || 'Failed to load PAR data');
+                throw new Error(data.message || 'Failed to load PAR data');
             }
         })
         .catch(error => {
             console.error('Error loading PAR data:', error);
-            showError('Error loading PAR data: ' + error.message);
+            showError(error.message);
         })
-        .finally(() => {
-            hideLoading();
-        });
+        .finally(hideLoading);
 }
 
 /**
@@ -354,37 +347,17 @@ function addParRow() {
     const newRow = document.createElement('tr');
     
     newRow.innerHTML = `
-        <td>
-            <input type="number" class="form-control par-qty qty" name="quantity[]" value="1" min="1">
-        </td>
-        <td>
-            <input type="text" class="form-control" name="unit[]" placeholder="Unit">
-        </td>
-        <td>
-            <textarea class="form-control" name="description[]" placeholder="Description" required></textarea>
-        </td>
-        <td>
-            <input type="text" class="form-control" name="property_number[]" placeholder="Property Number">
-        </td>
-        <td>
-            <input type="date" class="form-control par-item-date" name="date_acquired[]" value="${new Date().toISOString().split('T')[0]}">
-        </td>
-        <td>
-            <input type="text" class="form-control par-amount amount" name="amount[]" value="0.00">
-        </td>
-        <td>
-            <button type="button" class="btn btn-danger btn-sm remove-par-row">
-                <i class="bi bi-trash"></i>
-            </button>
-        </td>
+        <td><input type="number" class="form-control par-qty qty" name="quantity[]" value="1" min="1"></td>
+        <td><input type="text" class="form-control" name="unit[]" placeholder="Unit"></td>
+        <td><textarea class="form-control" name="description[]" placeholder="Description" required></textarea></td>
+        <td><input type="text" class="form-control" name="property_number[]" placeholder="Property Number"></td>
+        <td><input type="date" class="form-control par-item-date" name="date_acquired[]" value="${new Date().toISOString().split('T')[0]}"></td>
+        <td><input type="text" class="form-control par-amount amount" name="amount[]" value="0" onkeyup="this.value=formatNumber(this.value.replace(/[^0-9]/g,''))"></td>
+        <td><button type="button" class="btn btn-danger btn-sm remove-par-row"><i class="bi bi-trash"></i></button></td>
     `;
     
     tbody.appendChild(newRow);
-    
-    // Add event listeners to new row
     addParRowEventListeners(newRow);
-    
-    // Calculate total
     calculateParTotal();
 }
 
@@ -412,7 +385,7 @@ function addParRowWithData(item) {
             <input type="date" class="form-control par-item-date" name="date_acquired[]" value="${item.date_acquired || new Date().toISOString().split('T')[0]}">
         </td>
         <td>
-            <input type="text" class="form-control par-amount amount" name="amount[]" value="${formatCurrency(item.amount) || '0.00'}">
+            <input type="text" class="form-control par-amount amount" name="amount[]" value="${formatNumber(item.amount) || '0.00'}">
         </td>
         <td>
             <button type="button" class="btn btn-danger btn-sm remove-par-row">
@@ -454,9 +427,8 @@ function addParRowEventListeners(row) {
     if (amountInput) {
         amountInput.addEventListener('input', function() {
             // Format the input to currency
-            const value = this.value.replace(/[^\d.-]/g, '');
-            const numericValue = parseFloat(value) || 0;
-            this.value = formatCurrency(numericValue);
+            const value = this.value.replace(/[^0-9]/g, '');
+            this.value = formatNumber(value);
             
             // Recalculate total
             calculateParTotal();
@@ -496,20 +468,21 @@ function handleRemoveParRow(button) {
 function calculateParTotal() {
     let total = 0;
     document.querySelectorAll('#parItemsTable tbody tr').forEach(row => {
-        const qtyElement = row.querySelector('.par-qty, .qty, [name="quantity[]"]');
-        const amountElement = row.querySelector('.par-amount, .amount, [name="amount[]"]');
-        
-        if (qtyElement && amountElement) {
-            const qty = parseFloat(qtyElement.value) || 1;
-            const amount = parseCurrency(amountElement.value) || 0;
-            total += qty * amount;
-        }
+        const qty = parseInt(row.querySelector('[name="quantity[]"]').value) || 0;
+        const amount = parseInt(row.querySelector('[name="amount[]"]').value.replace(/[^0-9]/g, '')) || 0;
+        total += qty * amount;
     });
     
-    // Update total display if exists
+    // Update total display
     const totalElement = document.getElementById('parTotal');
     if (totalElement) {
-        totalElement.textContent = formatCurrency(total);
+        totalElement.textContent = formatNumber(total);
+    }
+    
+    // Also update hidden total input if it exists
+    const totalInput = document.querySelector('[name="total_amount"]');
+    if (totalInput) {
+        totalInput.value = total;
     }
     
     return total;
@@ -545,12 +518,12 @@ function savePAR() {
     // Collect items data
     document.querySelectorAll('#parItemsTable tbody tr').forEach(row => {
         const item = {
-            quantity: row.querySelector('[name="quantity[]"]').value,
+            quantity: parseInt(row.querySelector('[name="quantity[]"]').value) || 0,
             unit: row.querySelector('[name="unit[]"]').value,
             description: row.querySelector('[name="description[]"]').value,
             property_number: row.querySelector('[name="property_number[]"]').value,
             date_acquired: row.querySelector('[name="date_acquired[]"]').value,
-            amount: parseCurrency(row.querySelector('[name="amount[]"]').value)
+            amount: parseInt(row.querySelector('[name="amount[]"]').value.replace(/[^0-9]/g, '')) || 0
         };
         
         // Skip empty items
@@ -582,75 +555,60 @@ function savePAR() {
         },
         body: JSON.stringify(formData)
     })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error(`Server returned ${response.status} ${response.statusText}`);
-        }
-        return response.json();
-    })
+    .then(response => response.json())
     .then(data => {
         if (data.success) {
-            // Close modal
-            const parModal = bootstrap.Modal.getInstance(document.getElementById('parModal'));
-            if (parModal) {
-                parModal.hide();
-            } else {
-                // Fallback for dynamically created modals
-                const modalElement = document.getElementById('parModal');
-                if (modalElement) {
-                    const bsModal = new bootstrap.Modal(modalElement);
-                    bsModal.hide();
+            // Close modal properly
+            const modalElement = document.getElementById('parModal');
+            if (modalElement) {
+                const modal = bootstrap.Modal.getInstance(modalElement);
+                if (modal) {
+                    modal.hide();
+                    setTimeout(() => {
+                        document.body.classList.remove('modal-open');
+                        const backdrop = document.querySelector('.modal-backdrop');
+                        if (backdrop) backdrop.remove();
+                        document.body.style.overflow = '';
+                        document.body.style.paddingRight = '';
+                    }, 150);
                 }
             }
-            
-            // Show success message
+
             Swal.fire({
                 icon: 'success',
                 title: 'Success',
-                text: parId ? 'PAR updated successfully' : 'PAR created successfully',
+                text: formData.par_id ? 'PAR updated successfully' : 'PAR created successfully',
                 timer: 2000
             });
-            
-            // Reload PAR data
+
             loadPARData();
             
-            // Reset form
-            parForm.reset();
-            
-            // Clear items table
-            const tbody = document.getElementById('parItemsTable').querySelector('tbody');
-            if (tbody) {
-                tbody.innerHTML = '';
-                
-                // Add initial row
-                addInitialParRow();
+            // Reset form and items
+            const parForm = document.getElementById('parForm');
+            if (parForm) {
+                parForm.reset();
+                const tbody = document.getElementById('parItemsTable')?.querySelector('tbody');
+                if (tbody) {
+                    tbody.innerHTML = '';
+                    addInitialParRow();
+                }
             }
         } else {
-            showError(data.message || 'Failed to save PAR');
+            throw new Error(data.message || 'Failed to save PAR');
         }
     })
     .catch(error => {
         console.error('Error saving PAR:', error);
-        showError('Error saving PAR: ' + error.message);
+        showError(error.message);
     })
-    .finally(() => {
-        hideLoading();
-    });
+    .finally(hideLoading);
 }
 
 /**
- * Format currency
+ * Format number with commas
  */
-function formatCurrency(amount) {
-    const num = parseFloat(amount) || 0;
-    return num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-}
-
-/**
- * Parse currency string to number
- */
-function parseCurrency(currencyString) {
-    return parseFloat(currencyString.replace(/[^\d.-]/g, '')) || 0;
+function formatNumber(number) {
+    return number.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
 /**
@@ -744,3 +702,20 @@ function removeSpecificParItem() {
         }
     });
 }
+// Function to handle PAR form submission
+document.getElementById('saveParBtn')?.addEventListener('click', function () {
+    // Don't handle the form submission here - delegate to PAR.js
+    console.log('PAR save button clicked in script.js - delegating to PAR.js savePAR()');
+    
+    // Check if savePAR function exists in PAR.js
+    if (typeof savePAR === 'function') {
+        savePAR();
+    } else {
+        console.error('savePAR function not found. Make sure PAR.js is loaded properly.');
+        Swal.fire({
+            title: 'Error!',
+            text: 'Could not save PAR - savePAR function not found.',
+            icon: 'error'
+        });
+    }
+});
