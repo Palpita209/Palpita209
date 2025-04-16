@@ -1,4 +1,4 @@
-﻿document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function() {
     const savePoBtn = document.getElementById('savePoBtn');
     if (savePoBtn) {
         savePoBtn.addEventListener('click', function(e) {
@@ -457,6 +457,9 @@ function applyFilters() {
     // Get search term
     const searchTerm = inventorySearchInput ? inventorySearchInput.value.trim() : '';
 
+    // Show loading indicator
+    showLoading();
+
     // Build query parameters
     const params = new URLSearchParams();
     if (searchTerm) params.append('search', searchTerm);
@@ -464,11 +467,10 @@ function applyFilters() {
     if (location) params.append('location', location);
     if (dateFilter) params.append('date_filter', dateFilter);
 
-    // Show loading indicator
-    showLoading();
+    console.log('Applying filters:', {condition, location, dateFilter, searchTerm});
 
-    // Fetch filtered data
-    fetch(`get_inventory.php?${params.toString()}`)
+    // Fetch filtered data with correct path
+    fetch(`./Learning/get_inventory.php?${params.toString()}`)
         .then(response => {
             if (!response.ok) {
                 throw new Error(`HTTP error! Status: ${response.status}`);
@@ -497,12 +499,7 @@ function applyFilters() {
         .catch(error => {
             console.error('Error applying filters:', error);
             // Show error message
-            Swal.fire({
-                icon: 'error',
-                title: 'Filter Error',
-                text: 'Failed to apply filters. ' + error.message,
-                timer: 3000
-            });
+            showError('Failed to apply filters: ' + error.message);
             // Hide loading indicator
             hideLoading();
         });
@@ -751,36 +748,29 @@ function enhance3DTables() {
         });
     }
 
-    // Add subtle animation to the table rows for 3D effect
+    // Add subtle animation to the table rows for 3D effect - Updated to apply to all tables
     function addHoverAnimation() {
         const style = document.createElement('style');
         style.textContent = `
-            .custom-table tbody tr,
-            #parTableBody tbody tr {
+            /* Apply consistent hover effects to all tables */
+            .table tbody tr {
                 transition: transform 0.2s ease, box-shadow 0.2s ease;
             }
             
-            .custom-table tbody tr:hover,
-            #parTableBody tbody tr:hover {
+            .table tbody tr:hover {
                 transform: translateY(-2px) scale(1.005);
                 box-shadow: 0 6px 12px rgba(0, 0, 0, 0.08);
                 z-index: 1;
                 position: relative;
             }
             
-            /* Remove animations for PO tables */
-            .po-table tbody tr,
-            #poItemsTable tbody tr {
-                transition: none;
-                transform: none !important;
-            }
-            
-            .po-table tbody tr:hover,
-            #poItemsTable tbody tr:hover {
-                transform: none !important;
-                box-shadow: none;
-                z-index: auto;
-                position: static;
+            /* Disable transform on mobile */
+            @media (max-width: 992px) {
+                .table tbody tr:hover,
+                .table tbody tr {
+                    transform: none !important;
+                    box-shadow: none !important;
+                }
             }
         `;
         document.head.appendChild(style);
@@ -789,7 +779,7 @@ function enhance3DTables() {
     // Apply status badges to condition cells
     function applyStatusBadges() {
         // For inventory condition column
-        document.querySelectorAll('.custom-table tbody tr').forEach(row => {
+        document.querySelectorAll('.custom-table tbody tr, .table tbody tr').forEach(row => {
             const conditionCell = row.querySelector('td:nth-child(10)'); // Adjust based on your table structure
             if (conditionCell) {
                 const condition = conditionCell.textContent.trim();
@@ -802,32 +792,26 @@ function enhance3DTables() {
         });
     }
 
-    // Add depth to table header
+    // Add depth to table header - Updated for all tables
     function addTableHeaderDepth() {
         const style = document.createElement('style');
         style.textContent = `
-            .custom-table thead th, 
-            .po-table thead th,
-            #parTableBody thead th {
+            .table thead th {
                 position: relative;
                 overflow: hidden;
             }
             
-            .custom-table thead th:after, 
-            .po-table thead th:after,
-            #parTableBody thead th:after {
+            .table thead th:after {
                 content: '';
                 position: absolute;
                 bottom: 0;
                 left: 0;
                 width: 100%;
                 height: 2px;
-                background: linear-gradient(to right, rgba(22, 93, 255, 0.2), rgba(22, 93, 255, 0.8), rgba(22, 93, 255, 0.2));
+                background: linear-gradient(to right, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 1), rgba(255, 255, 255, 0.8));
             }
             
-            .custom-table, 
-            .po-table,
-            #parTableBody {
+            .table {
                 border-collapse: separate;
                 border-spacing: 0;
             }
@@ -837,7 +821,7 @@ function enhance3DTables() {
 
     // Style serial numbers for better visibility
     function styleSerialNumbers() {
-        document.querySelectorAll('.custom-table td:nth-child(5)').forEach(cell => {
+        document.querySelectorAll('.table td:nth-child(5)').forEach(cell => {
             const serialNumber = cell.textContent.trim();
             if (serialNumber && serialNumber !== 'N/A' && serialNumber !== '-') {
                 cell.innerHTML = `<code class="serial-number">${serialNumber}</code>`;
@@ -846,9 +830,11 @@ function enhance3DTables() {
     }
 
     // Apply the functions
-    applyDataLabels('.custom-table');
-    applyDataLabels('.po-table');
-    applyDataLabels('#parTableBody');
+    applyDataLabels('.table');
+    applyDataLabels('#poTable');
+    applyDataLabels('#parTable');
+    applyDataLabels('#poItemsTable');
+    applyDataLabels('#parItemsTable');
 
     // Add hover animations and other enhancements
     addHoverAnimation();
@@ -966,7 +952,7 @@ function setActiveSection(section, skipSave = false) {
             const allSections = document.querySelectorAll('.dashboard-section, .inventory-section, .po-section, .par-section');
             if (allSections.length === 0) {
                 console.error('No section elements found in the DOM');
-                Swal.fire('Error', 'Page sections not found. Please refresh the page.', 'error');
+                showError('Page sections not found. Please refresh the page.');
                 hideLoading();
                 return;
             }
@@ -1004,13 +990,14 @@ function setActiveSection(section, skipSave = false) {
                 const sectionElement = document.querySelector(sectionMap[section].section);
                 if (!sectionElement) {
                     console.error(`Section element not found: ${sectionMap[section].section}`);
-                    Swal.fire('Error', `Section "${section}" not found. Please refresh the page.`, 'error');
+                    showError(`Section "${section}" not found. Please refresh the page.`);
                     hideLoading();
                     return;
                 }
 
                 // Show the active section
                 sectionElement.classList.remove('d-none');
+                sectionElement.style.display = 'block'; // Force display block
 
                 // Activate the nav link
                 const navLink = document.querySelector(sectionMap[section].link);
@@ -1029,6 +1016,7 @@ function setActiveSection(section, skipSave = false) {
                     localStorage.setItem('activeSection', section);
                     localStorage.setItem('activeSectionLink', sectionMap[section].link);
                 }
+                
                 // Load data for the active section
                 console.log(`Loading data for section: ${section}`);
                 try {
@@ -1061,7 +1049,11 @@ function setActiveSection(section, skipSave = false) {
                                 return;
                             }
 
-                            loadDashboardStats();
+                            if (typeof loadDashboardStats === 'function') {
+                                loadDashboardStats();
+                            } else {
+                                console.warn('loadDashboardStats function not available');
+                            }
                         }
 
                         // Reset loading flag after a delay
@@ -1073,20 +1065,20 @@ function setActiveSection(section, skipSave = false) {
                     }
                 } catch (dataError) {
                     console.error(`Error loading data for section ${section}:`, dataError);
-                    Swal.fire('Data Loading Error', `Failed to load data for ${section}: ${dataError.message}`, 'error');
+                    showError(`Failed to load data for ${section}: ${dataError.message}`);
                     window.sectionDataLoading = false;
                 }
             } else {
                 console.error(`Unknown section: ${section}`);
-                Swal.fire('Error', `Unknown section: ${section}`, 'error');
+                showError(`Unknown section: ${section}`);
             }
         } catch (error) {
             console.error('Error setting active section:', error);
-            Swal.fire('Error', `Failed to change section: ${error.message}`, 'error');
+            showError(`Failed to change section: ${error.message}`);
         } finally {
             hideLoading();
         }
-    }, 500);
+    }, 100); // Reduced timeout for faster section switching
 }
 // Navigation event listeners
 document.querySelectorAll('.nav-link').forEach(link => {
@@ -1457,7 +1449,13 @@ function editItem(itemId) {
             }
             return response.json();
         })
-        .then(item => {
+        .then(data => {
+            if (!data.success) {
+                throw new Error(data.message || 'Failed to load item details');
+            }
+            
+            const item = data;
+            
             // Populate modal with item data
             const modal = new bootstrap.Modal(document.getElementById('addInventoryModal'));
             const modalTitleElement = document.getElementById('addInventoryModalLabel');
@@ -1871,8 +1869,63 @@ function viewPO(poId) {
 
     console.log('Viewing PO with ID:', poId);
     
-    // Open the viewPO.php in a new window
-        window.open(`viewPO.php?id=${encodeURIComponent(poId)}`, '_blank');
+    try {
+        // Make sure we're using the correct file name casing as some servers are case-sensitive
+        // Collect items from the modal if it's open
+        let modalData = '';
+        const addPoModal = document.getElementById('addPOModal');
+        if (addPoModal && window.getComputedStyle(addPoModal).display !== 'none') {
+            // Modal is open, collect data to send with the URL
+            const items = [];
+            const rows = document.querySelectorAll('#poItemsTable tbody tr:not(.d-none)');
+            
+            rows.forEach(row => {
+                const itemData = {
+                    name: row.querySelector('.item-name')?.value || '',
+                    unit: row.querySelector('.unit')?.value || '',
+                    description: row.querySelector('.description')?.value || '',
+                    item_description: row.querySelector('.description')?.value || '',
+                    quantity: row.querySelector('.qty')?.value || '0',
+                    unit_cost: row.querySelector('.unit-cost')?.value || '0',
+                    amount: row.querySelector('.amount')?.value || '0'
+                };
+                items.push(itemData);
+            });
+            
+            const poDetails = {
+                po_no: document.getElementById('poNumber')?.value || '',
+                supplier_name: document.getElementById('supplier')?.value || '',
+                po_date: document.getElementById('poDate')?.value || '',
+                total_amount: document.getElementById('totalAmount')?.value || '0',
+            };
+            
+            // Add optional fields if they exist
+            const refNoEl = document.getElementById('refNo');
+            if (refNoEl) poDetails.ref_no = refNoEl.value || '';
+            
+            const prNoEl = document.getElementById('prNo');
+            if (prNoEl) poDetails.pr_no = prNoEl.value || '';
+            
+            const dataObj = {
+                items: items,
+                po_details: poDetails
+            };
+            
+            // Encode data to pass in URL
+            modalData = '&modal_data=' + encodeURIComponent(JSON.stringify(dataObj));
+        }
+        
+        // Open the viewPO.php in a new window with properly encoded parameters
+        const viewUrl = `viewpo.php?id=${encodeURIComponent(poId)}${modalData}`;
+        console.log('Opening view URL:', viewUrl);
+        window.open(viewUrl, '_blank');
+    } catch (error) {
+        console.error('Error opening view PO page:', error);
+        Swal.fire('Error', 'Failed to open view PO page: ' + error.message, 'error');
+        
+        // Fallback to simplified URL if there was an error
+        window.open(`viewpo.php?id=${encodeURIComponent(poId)}`, '_blank');
+    }
 }
 
 // Function to print a PO
@@ -1944,8 +1997,8 @@ function loadInventoryData(searchQuery = '') {
 
     // Ensure we're using a consistent endpoint path
     const url = searchQuery
-        ? `./Learning/get_inventory.php?search=${encodeURIComponent(searchQuery)}`
-        : './Learning/get_inventory.php';
+        ? `./get_inventory.php?search=${encodeURIComponent(searchQuery)}`
+        : './get_inventory.php';
 
     showLoading();
 
@@ -2119,9 +2172,9 @@ function saveInventoryItem() {
     // Get all form values directly from input elements to ensure proper values
     const itemData = {
         item_id: document.getElementById('itemID')?.value || '',
-        item_name: itemName, // Ensure item_name is the validated value
-        brand_model: document.getElementById('Brand/model')?.value || '',
-        serial_number: document.getElementById('serialNumber')?.value || '',
+        item_name: itemName,
+        brand_model: document.getElementById('Brand/model')?.value || document.getElementById('brandModel')?.value || '',
+        serial_number: serialNumber,
         purchase_date: document.getElementById('purchaseDate')?.value || '',
         warranty_expiration: document.getElementById('warrantyDate')?.value || '',
         assigned_to: document.getElementById('assignedTo')?.value || '',
@@ -2464,105 +2517,69 @@ function loadPOData() {
     showLoading();
     console.log('Loading PO data from server...');
 
-    // Determine the base path for the API endpoint with more reliable detection
-    const pathParts = window.location.pathname.split('/');
-    const currentUrl = window.location.href;
-    const isInLearningDir = pathParts.includes('Learning') ||
-        currentUrl.includes('/Learning/') ||
-        currentUrl.includes('/Learning');
+    // Create a single, reliable endpoint path
+    const endpoint = 'get_po.php';
+    const cacheBuster = `?cache=${new Date().getTime()}`;
+    const url = endpoint + cacheBuster;
 
-    console.log('Current URL:', currentUrl);
-    console.log('Is in Learning directory:', isInLearningDir);
+    console.log('Fetching PO data from:', url);
 
-    // Create a comprehensive list of paths to try
-    let attempts = [
-        // Most common paths first
-        'get_po.php',
-        'api/get_po.php',
-        '../get_po.php',
-        'Learning/get_po.php',
-        // Additional fallbacks with direct server paths
-        '/Learning/get_po.php',
-        '/system/Thesis1/Learning/get_po.php',
-        // Absolute paths as last resort
-        window.location.origin + '/Learning/get_po.php',
-        window.location.origin + '/system/Thesis1/Learning/get_po.php'
-    ];
-
-    // Add cache buster to prevent browser caching
-    const cacheBuster = `cache=${new Date().getTime()}`;
-
-    console.log('Current path:', window.location.pathname);
-    console.log('Will try the following paths:', attempts);
-
-    // Function to try one path and move to the next if it fails
-    function tryNextPath(index) {
-        if (index >= attempts.length) {
-            console.error('All fetch attempts failed for PO data');
-            showError('Failed to load PO data. Please check server connectivity.');
-            hideLoading();
-            return;
-        }
-
-        const currentPath = attempts[index];
-        const pathWithCache = currentPath.includes('?')
-            ? `${currentPath}&${cacheBuster}`
-            : `${currentPath}?${cacheBuster}`;
-
-        console.log(`Attempting to fetch PO data from: ${pathWithCache} (attempt ${index + 1}/${attempts.length})`);
-
-        fetch(pathWithCache, {
-            method: 'GET',
-            headers: {
-                'Accept': 'application/json',
-                'Cache-Control': 'no-cache, no-store, must-revalidate',
-                'Pragma': 'no-cache',
-                'Expires': '0'
-            },
-            cache: 'no-store'
-        })
-            .then(response => {
-                if (!response.ok) {
-                    return response.text().then(text => {
-                        console.error(`Server error (${response.status}) from ${currentPath}:`, text.substring(0, 200));
-                        throw new Error(`Server returned ${response.status}`);
-                    });
-                }
-                return response.json();
-            })
-            .then(data => {
-                console.log(`Successfully loaded data from ${currentPath}:`, data);
-                // Store the successful path for future use
-                localStorage.setItem('successful_po_path', currentPath);
-                processPoData(data);
-            })
-            .catch(error => {
-                console.warn(`Error with path ${currentPath}:`, error.message);
-                // Try the next path
-                tryNextPath(index + 1);
+    fetch(url, {
+        method: 'GET',
+        headers: {
+            'Accept': 'application/json',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+        },
+        cache: 'no-store'
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.text().then(text => {
+                console.error(`Server error (${response.status}):`, text.substring(0, 200));
+                throw new Error(`Server returned ${response.status}: ${text.substring(0, 100)}`);
             });
-    }
-
-    // Check if we have a previously successful path stored
-    const storedPath = localStorage.getItem('successful_po_path');
-    if (storedPath) {
-        console.log('Found previously successful path:', storedPath);
-        // Move the stored path to the beginning of the attempts array, but don't remove other attempts
-        attempts = [storedPath, ...attempts.filter(p => p !== storedPath)];
-    }
-
-    // Start trying paths
-    tryNextPath(0);
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log(`Successfully loaded data:`, data);
+        processPoData(data);
+    })
+    .catch(error => {
+        console.error('Error loading PO data:', error);
+        
+        // Display user-friendly error message in the PO table
+        const poTableBody = document.getElementById('poTableBody') ||
+            document.querySelector('.po-section table tbody') ||
+            document.querySelector('#po-section table tbody');
+            
+        if (poTableBody) {
+            poTableBody.innerHTML = `<tr><td colspan="5" class="text-center text-danger">
+                Error: Failed to load PO data. Please try again. (${error.message})
+            </td></tr>`;
+        }
+        
+        // Show error message to user
+        if (typeof showError === 'function') {
+            showError('Failed to load PO data: ' + error.message);
+        } else {
+            Swal.fire('Error', 'Failed to load PO data: ' + error.message, 'error');
+        }
+    })
+    .finally(() => {
+        hideLoading();
+    });
 }
 
 // Process the PO data from the server response
 function processPoData(response) {
     console.log('Processing PO data:', response);
-    hideLoading();
-
+    
     try {
         // Check if response is an error message from the server
-        if (response.success === false) {
+        if (response && response.success === false) {
             console.error('Server returned error:', response.message || 'Unknown server error');
             Swal.fire({
                 title: 'Server Error',
@@ -2579,13 +2596,13 @@ function processPoData(response) {
 
         // Extract data based on response format
         let data;
-        if (response.success === true && Array.isArray(response.data)) {
+        if (response && response.success === true && Array.isArray(response.data)) {
             data = response.data;
             console.log('Using data array from success response');
         } else if (Array.isArray(response)) {
             data = response;
             console.log('Using direct array response');
-        } else if (response.success === true && typeof response.data === 'object') {
+        } else if (response && response.success === true && typeof response.data === 'object') {
             data = Object.values(response.data);
             console.log('Converting data object to array');
         } else if (typeof response === 'object' && response !== null) {
@@ -2634,40 +2651,58 @@ function processPoData(response) {
         // Populate the table with data
         data.forEach(po => {
             const row = document.createElement('tr');
+            
+            // Make sure we have valid data by using optional chaining or fallbacks
+            const poNo = po?.po_no || 'N/A';
+            const supplierName = po?.supplier_name || 'N/A';
+            const poDate = po?.po_date || 'N/A';
+            const totalAmount = po?.total_amount || 0;
+            const poId = po?.id || po?.po_id || 'N/A';
+            
             row.innerHTML = `
-                    <td>${po.po_no || 'N/A'}</td>
-                    <td>${po.supplier_name || 'N/A'}</td>
-                    <td>${po.po_date || 'N/A'}</td>
-                    <td>${formatCurrency(po.total_amount) || '₱0.00'}</td>
-                    <td>
-                        <div class="btn-group btn-group-sm" role="group">
-                            <button class="btn btn-sm btn-info view-po" data-id="${po.id || po.po_id}">
-                                <i class="bi bi-eye"></i>
-                            </button>
-                            <button class="btn btn-sm btn-primary edit-po" data-id="${po.id || po.po_id}">
-                                <i class="bi bi-pencil"></i>
-                            </button>
-                            <button class="btn btn-sm btn-danger delete-po" data-id="${po.id || po.po_id}">
-                                <i class="bi bi-trash"></i>
-                            </button>
-                        </div>
-                    </td>
-                `;
+                <td>${poNo}</td>
+                <td>${supplierName}</td>
+                <td>${poDate}</td>
+                <td>${formatCurrency(totalAmount) || '₱0.00'}</td>
+                <td>
+                    <div class="btn-group btn-group-sm" role="group">
+                        <button class="btn btn-sm btn-info view-po" data-id="${poId}">
+                            <i class="bi bi-eye"></i>
+                        </button>
+                        <button class="btn btn-sm btn-primary edit-po" data-id="${poId}">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <button class="btn btn-sm btn-danger delete-po" data-id="${poId}">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            `;
+            
             poTableBody.appendChild(row);
         });
-
+        
         // Add event listeners to buttons
         addPOButtonEventListeners();
-
-        console.log('PO table updated successfully with ' + data.length + ' records');
+        
     } catch (error) {
         console.error('Error processing PO data:', error);
-        showError('Error processing PO data: ' + error.message);
+        Swal.fire('Processing Error', 'Failed to process PO data: ' + error.message, 'error');
+        
+        // Find table body and show error
+        const poTableBody = document.getElementById('poTableBody') ||
+            document.querySelector('.po-section table tbody') ||
+            document.querySelector('#po-section table tbody');
+            
+        if (poTableBody) {
+            poTableBody.innerHTML = `<tr><td colspan="5" class="text-center text-danger">
+                Error processing data. Please try reloading the page.
+            </td></tr>`;
+        }
     }
 }
 
-
-
+// ... existing code ...
 
 // Fix for inventory modal save button - place directly in the DOMContentLoaded event
 document.addEventListener('DOMContentLoaded', function () {
@@ -3403,7 +3438,7 @@ function setActiveSection(section, skipSave = false) {
             const allSections = document.querySelectorAll('.dashboard-section, .inventory-section, .po-section, .par-section');
             if (allSections.length === 0) {
                 console.error('No section elements found in the DOM');
-                Swal.fire('Error', 'Page sections not found. Please refresh the page.', 'error');
+                showError('Page sections not found. Please refresh the page.');
                 hideLoading();
                 return;
             }
@@ -3441,13 +3476,14 @@ function setActiveSection(section, skipSave = false) {
                 const sectionElement = document.querySelector(sectionMap[section].section);
                 if (!sectionElement) {
                     console.error(`Section element not found: ${sectionMap[section].section}`);
-                    Swal.fire('Error', `Section "${section}" not found. Please refresh the page.`, 'error');
+                    showError(`Section "${section}" not found. Please refresh the page.`);
                     hideLoading();
                     return;
                 }
 
                 // Show the active section
                 sectionElement.classList.remove('d-none');
+                sectionElement.style.display = 'block'; // Force display block
 
                 // Activate the nav link
                 const navLink = document.querySelector(sectionMap[section].link);
@@ -3466,6 +3502,7 @@ function setActiveSection(section, skipSave = false) {
                     localStorage.setItem('activeSection', section);
                     localStorage.setItem('activeSectionLink', sectionMap[section].link);
                 }
+                
                 // Load data for the active section
                 console.log(`Loading data for section: ${section}`);
                 try {
@@ -3498,7 +3535,11 @@ function setActiveSection(section, skipSave = false) {
                                 return;
                             }
 
-                            loadDashboardStats();
+                            if (typeof loadDashboardStats === 'function') {
+                                loadDashboardStats();
+                            } else {
+                                console.warn('loadDashboardStats function not available');
+                            }
                         }
 
                         // Reset loading flag after a delay
@@ -3510,20 +3551,20 @@ function setActiveSection(section, skipSave = false) {
                     }
                 } catch (dataError) {
                     console.error(`Error loading data for section ${section}:`, dataError);
-                    Swal.fire('Data Loading Error', `Failed to load data for ${section}: ${dataError.message}`, 'error');
+                    showError(`Failed to load data for ${section}: ${dataError.message}`);
                     window.sectionDataLoading = false;
                 }
             } else {
                 console.error(`Unknown section: ${section}`);
-                Swal.fire('Error', `Unknown section: ${section}`, 'error');
+                showError(`Unknown section: ${section}`);
             }
         } catch (error) {
             console.error('Error setting active section:', error);
-            Swal.fire('Error', `Failed to change section: ${error.message}`, 'error');
+            showError(`Failed to change section: ${error.message}`);
         } finally {
             hideLoading();
         }
-    }, 500);
+    }, 100); // Reduced timeout for faster section switching
 }
 // Navigation event listeners
 document.querySelectorAll('.nav-link').forEach(link => {
@@ -3840,7 +3881,13 @@ function editItem(itemId) {
             }
             return response.json();
         })
-        .then(item => {
+        .then(data => {
+            if (!data.success) {
+                throw new Error(data.message || 'Failed to load item details');
+            }
+            
+            const item = data;
+            
             // Populate modal with item data
             const modal = new bootstrap.Modal(document.getElementById('addInventoryModal'));
             const modalTitleElement = document.getElementById('addInventoryModalLabel');
@@ -4318,12 +4365,11 @@ function loadInventoryData(searchQuery = '') {
 
     // Ensure we're using a consistent endpoint path
     const url = searchQuery
-        ? `./Learning/get_inventory.php?search=${encodeURIComponent(searchQuery)}`
-        : './Learning/get_inventory.php';
-
+        ? `./get_inventory.php?search=${encodeURIComponent(searchQuery)}`
+        : './get_inventory.php';
     showLoading();
 
-    console.log('Fetching inventory data from:', url);
+    console.log('Loading inventory data from:', url);
 
     fetch(url)
         .then(response => {
@@ -4541,52 +4587,86 @@ function updateInventoryTable(data) {
         const purchaseDate = item.purchase_date ? new Date(item.purchase_date).toLocaleDateString() : 'N/A';
         const warrantyDate = item.warranty_expiration ? new Date(item.warranty_expiration).toLocaleDateString() : 'N/A';
 
+        // Calculate warranty status
+        let warrantyStatus = 'N/A';
+        let warrantyBadgeClass = 'bg-secondary';
+        
+        if (item.warranty_expiration) {
+            const now = new Date();
+            const warrantyDate = new Date(item.warranty_expiration);
+            
+            const daysRemaining = Math.floor((warrantyDate - now) / (1000 * 60 * 60 * 24));
+            
+            if (daysRemaining > 90) {
+                warrantyStatus = 'ACTIVE';
+                warrantyBadgeClass = 'bg-success';
+            } else if (daysRemaining > 0) {
+                warrantyStatus = `${daysRemaining} days left`;
+                warrantyBadgeClass = 'bg-warning text-dark';
+            } else {
+                warrantyStatus = 'EXPIRED';
+                warrantyBadgeClass = 'bg-danger';
+            }
+        }
+
         // Get condition badge class
         const conditionClass = getConditionBadgeClass(item.condition || 'Unknown');
 
         row.innerHTML = `
-                <td class="text-center">
-                    <div class="btn-group btn-group-sm">
-                        <button class="btn btn-sm btn-primary edit-item" data-id="${item.item_id}">
-                            <i class="bi bi-pencil-square"></i>
-                        </button>
-                        <button class="btn btn-sm btn-danger delete-item" data-id="${item.item_id}">
-                            <i class="bi bi-trash"></i>
-                        </button>
-                    </div>
-                </td>
-                <td>${item.item_id || ''}</td>
-                <td>${item.item_name || ''}</td>
-                <td>${item.brand_model || ''}</td>
-                <td>${item.serial_number || ''}</td>
-                <td>${purchaseDate}</td>
-                <td>${warrantyDate}</td>
-                <td>${item.assigned_to || ''}</td>
-                <td>${item.location || ''}</td>
-                <td><span class="badge ${conditionClass}">${item.condition || 'Unknown'}</span></td>
-                <td>${item.notes || ''}</td>
-            `;
+            <td class="text-center">
+                <div class="btn-group btn-group-sm">
+                    <button class="btn btn-sm btn-primary edit-item" data-id="${item.item_id}">
+                        <i class="bi bi-pencil-square"></i>
+                    </button>
+                    <button class="btn btn-sm btn-danger delete-item" data-id="${item.item_id}">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </td>
+            <td>${item.item_id || ''}</td>
+            <td>${item.item_name || ''}</td>
+            <td>${item.brand_model || ''}</td>
+            <td>${item.serial_number || ''}</td>
+            <td>${purchaseDate}</td>
+            <td class="warranty-column">
+                <span class="badge ${warrantyBadgeClass}">${warrantyStatus}</span>
+            </td>
+            <td>${item.assigned_to || ''}</td>
+            <td>${item.location || ''}</td>
+            <td><span class="badge ${conditionClass}">${item.condition || 'Unknown'}</span></td>
+            <td>${item.notes || ''}</td>
+        `;
 
         tableBody.appendChild(row);
     });
 
-    // Add event listeners to the action buttons
-    addActionButtonListeners();
+    // Add event listeners for action buttons
+    document.querySelectorAll('.edit-item').forEach(button => {
+        button.addEventListener('click', function() {
+            const itemId = this.getAttribute('data-id');
+            editItem(itemId);
+        });
+    });
+
+    document.querySelectorAll('.delete-item').forEach(button => {
+        button.addEventListener('click', function() {
+            const itemId = this.getAttribute('data-id');
+            deleteItem(itemId);
+        });
+    });
 }
 
-// Helper function to determine condition badge class
+// Update the getConditionBadgeClass function to handle the condition values correctly
 function getConditionBadgeClass(condition) {
-    switch (condition.toLowerCase()) {
-        case 'excellent':
+    switch(condition) {
+        case 'New':
             return 'bg-success';
-        case 'good':
-            return 'bg-primary';
-        case 'fair':
-            return 'bg-warning';
-        case 'poor':
+        case 'Good':
+            return 'bg-info';
+        case 'Fair':
+            return 'bg-warning text-dark';
+        case 'Poor':
             return 'bg-danger';
-        case 'retired':
-            return 'bg-secondary';
         default:
             return 'bg-secondary';
     }
@@ -4661,7 +4741,7 @@ function checkWarrantyStatus() {
                 if (currentStatus === 'EXPIRED') {
                     statusElement.textContent = 'EXPIRED';
                     statusElement.classList.add('badge', 'bg-danger');
-                } else {
+    } else {
                     statusElement.textContent = 'ACTIVE';
                     statusElement.classList.add('badge', 'bg-success');
                 }
@@ -4685,7 +4765,57 @@ function checkWarrantyStatus() {
 }
 
 function updateConditionStatus() {
-    console.log('updateConditionStatus called, but not implemented');
+    console.log('Updating condition status for inventory items');
+
+    // Get all inventory items with condition information
+    const inventoryItems = document.querySelectorAll('.inventory-item, .item-row');
+
+    if (!inventoryItems || inventoryItems.length === 0) {
+        console.log('No inventory items found to update conditions');
+        return;
+    }
+
+    console.log(`Found ${inventoryItems.length} inventory items to update condition status`);
+
+    // Process each item
+    inventoryItems.forEach(item => {
+        try {
+            // Get condition elements
+            const conditionElements = [
+                item.querySelector('.condition-badge'),
+                item.querySelector('td.condition-column .badge'),
+                item.querySelector('[data-condition]')
+            ].filter(el => el); // Remove null elements
+
+            if (conditionElements.length === 0) {
+                return; // No condition elements found
+            }
+
+            // Update each condition element
+            conditionElements.forEach(conditionElement => {
+                // Get the current condition text
+                const condition = conditionElement.textContent.trim();
+                
+                // Remove all existing badge classes
+                conditionElement.classList.remove('bg-success', 'bg-info', 'bg-warning', 'bg-danger', 'bg-secondary', 'text-dark');
+                
+                // Apply the appropriate badge class based on condition
+                const badgeClass = getConditionBadgeClass(condition);
+                badgeClass.split(' ').forEach(cls => {
+                    conditionElement.classList.add(cls);
+                });
+                
+                // Ensure styling is consistent
+                conditionElement.classList.add('badge');
+                conditionElement.style.fontWeight = 'bold';
+                conditionElement.style.letterSpacing = '0.5px';
+                conditionElement.style.padding = '5px 8px';
+                conditionElement.style.fontSize = '0.85rem';
+            });
+        } catch (error) {
+            console.error('Error updating condition for item:', error);
+        }
+    });
 }
 
 // Modify loadInventoryData to make sure it's properly implemented
@@ -4943,6 +5073,18 @@ window.attachPOButtonHandler = function () {
     if (savePoBtn) {
         console.log('Attaching event handler to savePoBtn');
 
+        // Check if handler is already attached
+        if (savePoBtn.hasAttribute('data-handler-attached') && savePoBtn.getAttribute('data-handler-attached') === 'true') {
+            console.log('Handler already attached to savePoBtn, skipping');
+            
+            // Make sure button is enabled
+            savePoBtn.disabled = false;
+            if (savePoBtn.querySelector('.spinner-border')) {
+                savePoBtn.innerHTML = 'Save PO';
+            }
+            return;
+        }
+
         // Remove any existing listeners by cloning the node
         const newSavePoBtn = savePoBtn.cloneNode(true);
         savePoBtn.parentNode.replaceChild(newSavePoBtn, savePoBtn);
@@ -4954,96 +5096,190 @@ window.attachPOButtonHandler = function () {
             e.preventDefault();
             console.log('savePoBtn clicked');
 
+            // Prevent duplicate processing
+            if (this.disabled) {
+                console.log('Button is already disabled, preventing duplicate processing');
+                return;
+            }
+
             // Disable button to prevent multiple submissions
             this.disabled = true;
             const originalBtnText = this.innerHTML;
             this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Saving...';
 
-            // Get all items from the table
-            const itemRows = document.querySelectorAll('#poItemsTable tbody tr:not(.d-none)');
-            const items = [];
+            try {
+                // Get all items from the table
+                const itemRows = document.querySelectorAll('#poItemsTable tbody tr:not(.d-none)');
+                const items = [];
 
-            itemRows.forEach(row => {
-                const itemName = row.querySelector('.item-name')?.value || '';
-                const unit = row.querySelector('.unit')?.value || '';
-                const description = row.querySelector('.description')?.value || '';
-                const quantity = parseFloat(row.querySelector('.qty')?.value) || 0;
-                const unitCost = parseFloat(row.querySelector('.unit-cost')?.value) || 0;
-                const amount = parseFloat(row.querySelector('.amount')?.value?.replace(/[^\d.-]/g, '')) || 0;
+                itemRows.forEach(row => {
+                    const itemName = row.querySelector('.item-name')?.value || '';
+                    const unit = row.querySelector('.unit')?.value || '';
+                    const description = row.querySelector('.description')?.value || '';
+                    const quantity = parseFloat(row.querySelector('.qty')?.value) || 0;
+                    const unitCost = parseFloat(row.querySelector('.unit-cost')?.value) || 0;
+                    const amount = parseFloat(row.querySelector('.amount')?.value?.replace(/[^\d.-]/g, '')) || 0;
 
-                // Only add non-empty items
-                if (itemName || description) {
-                    items.push({
-                        name: itemName,
-                        unit: unit,
-                        description: description,
-                        quantity: quantity,
-                        unit_cost: unitCost,
-                        amount: amount
-                    });
+                    // Only add non-empty items
+                    if (itemName || description) {
+                        items.push({
+                            name: itemName,
+                            item_name: itemName,
+                            unit: unit,
+                            description: description,
+                            item_description: description,
+                            quantity: quantity,
+                            unit_cost: unitCost,
+                            amount: amount
+                        });
+                    }
+                });
+
+                // Check if items exist
+                if (items.length === 0) {
+                    throw new Error('Please add at least one item to the purchase order');
                 }
-            });
 
-            // Get form data
-            const poData = {
-                po_number: document.getElementById('poNumber')?.value || '',
-                supplier: document.getElementById('supplier')?.value || '',
-                date: document.getElementById('poDate')?.value || '',
-                total_amount: document.getElementById('totalAmount')?.value?.replace(/[^\d.-]/g, '') || 0,
-                items: items
-            };
+                // Get form data
+                const poNo = document.getElementById('poNumber')?.value || '';
+                const supplier = document.getElementById('supplier')?.value || '';
+                const poDate = document.getElementById('poDate')?.value || '';
+                const totalAmount = document.getElementById('totalAmount')?.value?.replace(/[^\d.-]/g, '') || 0;
+                
+                // Basic validation
+                if (!poNo || !supplier) {
+                    throw new Error('Please fill in required fields (PO Number, Supplier)');
+                }
+                
+                // Get additional fields if they exist
+                const refNo = document.getElementById('refNo')?.value || '';
+                const prNo = document.getElementById('prNo')?.value || '';
+                const prDate = document.getElementById('prDate')?.value || '';
+                const placeOfDelivery = document.getElementById('placeOfDelivery')?.value || '';
+                const deliveryDate = document.getElementById('deliveryDate')?.value || '';
+                const paymentTerm = document.getElementById('paymentTerm')?.value || '';
+                const deliveryTerm = document.getElementById('deliveryTerm')?.value || '';
+                
+                // Create properly formatted PO data
+                const poData = {
+                    po_no: poNo,
+                    ref_no: refNo,
+                    supplier_name: supplier,
+                    po_date: poDate,
+                    pr_no: prNo,
+                    pr_date: prDate,
+                    place_of_delivery: placeOfDelivery,
+                    delivery_date: deliveryDate,
+                    payment_term: paymentTerm,
+                    delivery_term: deliveryTerm,
+                    total_amount: totalAmount,
+                    items: items
+                };
 
-            console.log('PO Data being sent:', poData);
+                console.log('PO Data being sent:', poData);
 
-            // Send data to server
-            fetch('add_po.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(poData)
-            })
+                // Show loading indicator
+                if (typeof showLoading === 'function') {
+                    showLoading();
+                }
+
+                // Send data to server
+                fetch('add_po.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(poData)
+                })
                 .then(response => {
                     if (!response.ok) {
-                        throw new Error('Network response was not ok');
+                        return response.text().then(text => {
+                            console.error('Server error response:', text);
+                            throw new Error('Server Error: ' + (text || 'Unknown error'));
+                        });
                     }
                     return response.json();
                 })
                 .then(data => {
                     console.log('PO saved successfully:', data);
-        Swal.fire({
+                    
+                    // Hide loading indicator
+                    if (typeof hideLoading === 'function') {
+                        hideLoading();
+                    }
+                    
+                    Swal.fire({
                         title: 'Success!',
                         text: 'Purchase Order saved successfully',
                         icon: 'success',
                         confirmButtonText: 'OK'
                     }).then(() => {
-                        // Reload PO data or close modal
+                        // Reset form
+                        const form = document.querySelector('#addPOModal form');
+                        if (form) form.reset();
+                        
+                        // Clear table
+                        document.querySelectorAll('#poItemsTable tbody tr:not(.d-none)').forEach(row => {
+                            if (!row.classList.contains('template-row')) {
+                                row.remove();
+                            }
+                        });
+                        
+                        // Close modal
                         const poModal = document.getElementById('addPOModal');
                         if (poModal && typeof bootstrap !== 'undefined') {
                             const modal = bootstrap.Modal.getInstance(poModal);
                             if (modal) modal.hide();
                         }
+                        
+                        // Reload PO data
                         if (typeof loadPOData === 'function') {
                             loadPOData();
-                } else {
-                            window.location.reload();
+                        } else {
+                            // Don't reload the page as it might cause issues
+                            console.warn('loadPOData function not found');
                         }
                     });
                 })
                 .catch(error => {
                     console.error('Error saving PO:', error);
+                    
+                    // Hide loading indicator
+                    if (typeof hideLoading === 'function') {
+                        hideLoading();
+                    }
+                    
                     Swal.fire({
                         title: 'Error!',
                         text: 'Failed to save Purchase Order: ' + error.message,
-            icon: 'error',
+                        icon: 'error',
                         confirmButtonText: 'OK'
                     });
                 })
                 .finally(() => {
-                    // Re-enable button
+                    // Always re-enable button
                     this.disabled = false;
                     this.innerHTML = originalBtnText;
                 });
+            } catch (error) {
+                console.error('Error in savePoBtn click handler:', error);
+                
+                // Hide loading indicator
+                if (typeof hideLoading === 'function') {
+                    hideLoading();
+                }
+                
+                // Re-enable button
+                this.disabled = false;
+                this.innerHTML = originalBtnText;
+                
+                Swal.fire({
+                    title: 'Error!',
+                    text: 'An error occurred while processing your request: ' + error.message,
+                    icon: 'error',
+                    confirmButtonText: 'OK'
+                });
+            }
         });
     }
 };
@@ -5178,6 +5414,42 @@ document.addEventListener('DOMContentLoaded', function () {
         if (event.target.id === 'poModal' || event.target.id === 'addPOModal') {
             console.log('PO modal shown, attaching handlers');
             window.attachPOButtonHandler();
+            
+            // Add safeguard to ensure modal can be closed
+            const modal = event.target;
+            const closeButtons = modal.querySelectorAll('.btn-close, [data-bs-dismiss="modal"]');
+            closeButtons.forEach(button => {
+                // Remove existing listeners by cloning
+                const newButton = button.cloneNode(true);
+                button.parentNode.replaceChild(newButton, button);
+                
+                // Add enhanced close handler
+                newButton.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    
+                    // Get modal instance and hide it
+                    const modalInstance = bootstrap.Modal.getInstance(modal);
+                    if (modalInstance) {
+                        modalInstance.hide();
+                    } else {
+                        // Fallback if modal instance not found
+                        modal.style.display = 'none';
+                        modal.classList.remove('show');
+                        document.body.classList.remove('modal-open');
+                        const backdrop = document.querySelector('.modal-backdrop');
+                        if (backdrop) backdrop.remove();
+                    }
+                    
+                    // Reset any buttons that might be disabled
+                    const saveBtn = document.getElementById('savePoBtn');
+                    if (saveBtn) {
+                        saveBtn.disabled = false;
+                        if (saveBtn.querySelector('.spinner-border')) {
+                            saveBtn.innerHTML = 'Save PO';
+                        }
+                    }
+                });
+            });
         }
         if (event.target.id === 'parModal' || event.target.id === 'addPARModal') {
             console.log('PAR modal shown, attaching handlers');
@@ -5253,93 +5525,141 @@ function viewPAR(parId) {
 // ... existing code ...
 
 // Function to handle PO form submission
-document.getElementById('savePoBtn')?.addEventListener('click', function () {
-    // Get form data
-    const poForm = document.getElementById('poForm');
-    if (!poForm) return;
-
-    // Get all items from the table
-    const itemRows = document.querySelectorAll('#poItemsTable tbody tr:not(.d-none)');
-    const items = [];
-
-    itemRows.forEach(row => {
-        const item = {
-            description: row.querySelector('.item-description')?.value || '',
-            unit: row.querySelector('.unit')?.value || '',
-            quantity: parseInt(row.querySelector('.quantity')?.value) || 0,
-            unit_cost: parseFloat(row.querySelector('.unit-cost')?.value) || 0,
-            amount: parseFloat(row.querySelector('.amount')?.value) || 0
-        };
-        if (item.description) {
-            items.push(item);
+document.getElementById('savePoBtn')?.addEventListener('click', function (e) {
+    // Prevent default form submission to avoid double processing
+    e.preventDefault();
+    
+    // If the button already has the handler attached, don't proceed
+    if (this.hasAttribute('data-handler-attached')) {
+        console.log('Handler already attached to button, skipping duplicate execution');
+        return;
+    }
+    
+    // Disable button to prevent multiple submissions
+    this.disabled = true;
+    const originalBtnText = this.innerHTML;
+    this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Saving...';
+    
+    try {
+        // Get form data
+        const poForm = document.getElementById('poForm');
+        if (!poForm) {
+            throw new Error('PO Form not found');
         }
-    });
 
-    const poData = {
-        po_no: document.getElementById('poNo').value,
-        ref_no: document.getElementById('refNo').value,
-        supplier_name: document.getElementById('supplier').value,
-        po_date: document.getElementById('poDate').value,
-        mode_of_procurement: document.getElementById('modeOfProcurement').value,
-        pr_no: document.getElementById('prNo').value,
-        pr_date: document.getElementById('prDate').value,
-        place_of_delivery: document.getElementById('placeOfDelivery').value,
-        delivery_date: document.getElementById('deliveryDate').value,
-        payment_term: document.getElementById('paymentTerm').value,
-        delivery_term: document.getElementById('deliveryTerm').value,
-        obligation_request_no: document.getElementById('obligationRequestNo').value,
-        obligation_amount: parseFloat(document.getElementById('obligationAmount').value) || 0,
-        total_amount: parseFloat(document.getElementById('totalAmount').value.replace(/[^\d.-]/g, '')) || 0,
-        items: items
-    };
+        // Get all items from the table
+        const itemRows = document.querySelectorAll('#poItemsTable tbody tr:not(.d-none)');
+        const items = [];
 
-    // Show loading state
-                Swal.fire({
-        title: 'Saving Purchase Order',
-        text: 'Please wait...',
-        allowOutsideClick: false,
-        didOpen: () => {
-            Swal.showLoading();
-        }
-    });
-
-    // Send data to server
-    fetch('add_po.php', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(poData)
-    })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                Swal.fire({
-                    title: 'Success!',
-                    text: 'Purchase Order saved successfully',
-                    icon: 'success'
-                }).then(() => {
-                    // Close modal
-                    const poModal = bootstrap.Modal.getInstance(document.getElementById('poModal'));
-                    if (poModal) {
-                        poModal.hide();
-                    }
-                    // Refresh PO table
-                    loadPOData();
-                });
-            } else {
-                throw new Error(data.message || 'Failed to save PO');
+        itemRows.forEach(row => {
+            const item = {
+                description: row.querySelector('.item-description')?.value || '',
+                unit: row.querySelector('.unit')?.value || '',
+                quantity: parseInt(row.querySelector('.quantity')?.value) || 0,
+                unit_cost: parseFloat(row.querySelector('.unit-cost')?.value) || 0,
+                amount: parseFloat(row.querySelector('.amount')?.value) || 0
+            };
+            if (item.description) {
+                items.push(item);
             }
-        })
-        .catch(error => {
-            Swal.fire({
-                title: 'Error!',
-                text: error.message || 'Failed to save PO: Server returned 500: Internal Server Error',
-                icon: 'error'
-            });
         });
-});
 
+        const poData = {
+            po_no: document.getElementById('poNo').value,
+            ref_no: document.getElementById('refNo').value,
+            supplier_name: document.getElementById('supplier').value,
+            po_date: document.getElementById('poDate').value,
+            mode_of_procurement: document.getElementById('modeOfProcurement').value,
+            pr_no: document.getElementById('prNo').value,
+            pr_date: document.getElementById('prDate').value,
+            place_of_delivery: document.getElementById('placeOfDelivery').value,
+            delivery_date: document.getElementById('deliveryDate').value,
+            payment_term: document.getElementById('paymentTerm').value,
+            delivery_term: document.getElementById('deliveryTerm').value,
+            obligation_request_no: document.getElementById('obligationRequestNo').value,
+            obligation_amount: parseFloat(document.getElementById('obligationAmount').value) || 0,
+            total_amount: parseFloat(document.getElementById('totalAmount').value.replace(/[^\d.-]/g, '')) || 0,
+            items: items
+        };
+
+        // Show loading state
+        Swal.fire({
+            title: 'Saving Purchase Order',
+            text: 'Please wait...',
+            allowOutsideClick: false,
+            didOpen: () => {
+                Swal.showLoading();
+            }
+        });
+
+        // Send data to server
+        fetch('add_po.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(poData)
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    Swal.fire({
+                        title: 'Success!',
+                        text: 'Purchase Order saved successfully',
+                        icon: 'success'
+                    }).then(() => {
+                        // Close modal
+                        const poModal = bootstrap.Modal.getInstance(document.getElementById('addPOModal'));
+                        if (poModal) {
+                            poModal.hide();
+                        }
+                        // Refresh PO table
+                        if (typeof loadPOData === 'function') {
+                            loadPOData();
+                        }
+                    });
+                } else {
+                    throw new Error(data.message || 'Failed to save PO');
+                }
+            })
+            .catch(error => {
+                console.error('Error saving PO:', error);
+                Swal.fire({
+                    title: 'Error!',
+                    text: error.message || 'Failed to save PO: Server error',
+                    icon: 'error'
+                });
+            })
+            .finally(() => {
+                // Always re-enable button and restore text
+                this.disabled = false;
+                this.innerHTML = originalBtnText;
+                
+                // Ensure loading indicator is hidden
+                if (typeof hideLoading === 'function') {
+                    hideLoading();
+                }
+            });
+    } catch (error) {
+        console.error('Error in PO form submission:', error);
+        
+        // Show error message
+        Swal.fire({
+            title: 'Error!',
+            text: 'An error occurred: ' + error.message,
+            icon: 'error'
+        });
+        
+        // Re-enable button and restore text
+        this.disabled = false;
+        this.innerHTML = originalBtnText;
+        
+        // Ensure loading indicator is hidden
+        if (typeof hideLoading === 'function') {
+            hideLoading();
+        }
+    }
+});
 // ... existing code ...
 
 // Function to handle PAR form submission
@@ -5807,7 +6127,6 @@ function addPOButtonEventListeners() {
     try {
         console.log('Adding event listeners to PO buttons');
 
-        // Add event listeners to view buttons
         document.querySelectorAll('.view-po').forEach(btn => {
             btn.addEventListener('click', function () {
                 const poId = this.getAttribute('data-id');
@@ -5816,7 +6135,6 @@ function addPOButtonEventListeners() {
             });
         });
 
-        // Add event listeners to edit buttons
         document.querySelectorAll('.edit-po').forEach(btn => {
             btn.addEventListener('click', function () {
                 const poId = this.getAttribute('data-id');
@@ -5825,7 +6143,6 @@ function addPOButtonEventListeners() {
             });
         });
 
-        // Add event listeners to delete buttons
         document.querySelectorAll('.delete-po').forEach(btn => {
             btn.addEventListener('click', function () {
                 const poId = this.getAttribute('data-id');
@@ -5839,8 +6156,7 @@ function addPOButtonEventListeners() {
         console.error('Error adding event listeners to PO buttons:', error);
     }
 }
-// ... existing code ...
-// Function to view a PO
+
 function viewPO(poId) {
     if (!poId) {
         Swal.fire('Error', 'PO ID is required', 'error');
@@ -5853,407 +6169,665 @@ function viewPO(poId) {
     window.open(`viewPO.php?id=${encodeURIComponent(poId)}`, '_blank');
 }
 
-// ... existing code ...
-
-// Function to print a PAR
-function printPAR() {
-    // Get the iframe from the modal
-    const iframe = document.querySelector('#viewPARModal iframe');
-
-    if (!iframe) {
-        console.error('Print failed: PAR iframe not found');
-        return;
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM fully loaded - initializing event handlers');
+    
+    // Initialize the PO button events
+    if (typeof attachPOButtonHandler === 'function') {
+        attachPOButtonHandler();
     }
-
-    try {
-        // Get the iframe's window object
-        const iframeWindow = iframe.contentWindow;
-
-        // Store current page title
-        const originalTitle = document.title;
-
-        // Set the title to the PAR number if available
-        const parNumberElement = iframeWindow.document.querySelector('.par-number');
-        if (parNumberElement) {
-            document.title = 'PAR ' + parNumberElement.textContent.trim();
+    
+    // Initial data loading if on the PO section
+    if (document.getElementById('poTableBody')) {
+        if (typeof loadPOData === 'function') {
+            console.log('Loading initial PO data');
+            loadPOData();
         }
-
-        // Print the iframe content
-        iframeWindow.focus();
-        iframeWindow.print();
-
-        // Restore original title
-        setTimeout(() => {
-            document.title = originalTitle;
-        }, 1000);
-    } catch (error) {
-        console.error('Error printing PAR:', error);
     }
-}
-// ... existing code ...
-// ... existing code ...
-
-
-
-// Function to add a new PAR item row
-function addParRow() {
-    const tbody = document.querySelector('#parItemsTable tbody');
-    if (!tbody) return;
-
-    const newRow = document.createElement('tr');
-    newRow.innerHTML = `
-        <td>
-            <input type="number" class="form-control form-control-sm par-qty" name="quantity[]" placeholder="0" min="1" value="1">
-        </td>
-        <td>
-            <input type="text" class="form-control form-control-sm par-unit" name="unit[]" placeholder="Unit">
-        </td>
-        <td>
-            <textarea class="form-control form-control-sm par-description" name="description[]" placeholder="Description" rows="2" style="min-height: 60px;"></textarea>
-        </td>
-        <td>
-            <input type="text" class="form-control form-control-sm par-property-number" name="property_number[]" placeholder="Property Number">
-        </td>
-        <td>
-            <input type="date" class="form-control form-control-sm par-item-date" name="date_acquired[]" placeholder="Date Acquired">
-        </td>
-        <td>
-            <input type="number" step="0.01" class="form-control form-control-sm par-amount" name="amount[]" placeholder="0.00" value="0">
-        </td>
-        <td>
-            <button type="button" class="btn btn-sm btn-danger remove-par-item">
-                                <i class="bi bi-trash"></i>
-                            </button>
-                    </td>
-                `;
-
-    tbody.appendChild(newRow);
-    calculateParTotal();
-}
-
-// Function to add initial row to PAR items table
-function addInitialParRow() {
-    const tbody = document.querySelector('#parItemsTable tbody');
-    if (tbody && tbody.querySelectorAll('tr').length === 0) {
-        addParRow();
-    }
-}
-
-// Calculate PAR total amount
-function calculateParTotal() {
-    const rows = document.querySelectorAll('#parItemsTable tbody tr');
-    let total = 0;
-
-    rows.forEach(row => {
-        const qty = parseInt(row.querySelector('.par-qty')?.value) || 0;
-        const amount = parseFloat(row.querySelector('.par-amount')?.value) || 0;
-        total += qty * amount;
-    });
-
-    if (document.getElementById('parTotalAmount')) {
-        document.getElementById('parTotalAmount').value = '₱' + total.toFixed(2);
-    }
-}
-// ... existing code ...
-function applyFilters() {
-    // Get filter values
-    const condition = document.getElementById('conditionFilter') ? document.getElementById('conditionFilter').value : '';
-    const location = document.getElementById('locationFilter') ? document.getElementById('locationFilter').value : '';
-    const dateFilter = document.getElementById('purchaseDateFilter') ? document.getElementById('purchaseDateFilter').value : '';
-
-    // Get search term
-    const searchTerm = document.getElementById('inventorySearchInput') ? document.getElementById('inventorySearchInput').value.trim() : '';
-
-    console.log('Applying filters:', { condition, location, dateFilter, searchTerm });
-
-    if (window.filteredData) {
-        const filteredItems = window.filteredData.filter(item => {
-            // Check condition filter   
-            if (condition && item.condition !== condition) {
-                return false;
+    
+    // Add listeners to section tabs/buttons to ensure they load their data
+    const poTab = document.querySelector('[data-section="po-section"]');
+    if (poTab) {
+        poTab.addEventListener('click', function() {
+            if (typeof loadPOData === 'function') {
+                loadPOData();
             }
-            
-            // Check location filter
-            if (location && item.location !== location) {
-                return false;
-            }
-            
-            // Check date filter (implement date filtering logic as needed)
-            
-            return true;
         });
-
-        console.log(`Filtered from ${window.filteredData.length} to ${filteredItems.length} items`);
-        
-        // Update the table with filtered data
-        updateInventoryTable(filteredItems);
-        
-        // Update related components
-        checkWarrantyStatus();
-        updateConditionStatus();
-    } else {
-        // If no data is loaded yet, load it with filters
-        // Build query parameters
-        const params = new URLSearchParams();
-        if (searchTerm) params.append('search', searchTerm);
-        if (condition) params.append('condition', condition);
-        if (location) params.append('location', location);
-        if (dateFilter) params.append('date_filter', dateFilter);
-
-        // Show loading indicator
-        showLoading();
-
-        // Fetch filtered data
-        fetch(`./Learning/get_inventory.php?${params.toString()}`)
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! Status: ${response.status}`);
-                }
-                return response.json();
-            })
-            .then(response => {
-                // Handle both data formats (array or {success, data})
-                let data = Array.isArray(response) ? response : (response.data || []);
-
-                console.log('Filter results received:', data.length, 'items');
-
-                // Store the data globally so it can be used by other functions
-                window.filteredData = data;
-
-                // Update table with the filtered data
-                updateInventoryTable(data);
-
-                // Update related components
-                checkWarrantyStatus();
-                updateConditionStatus();
-
-                // Hide loading indicator
-                hideLoading();
-            })
-            .catch(error => {
-                console.error('Error applying filters:', error);
-            // Show error message
-                showError('Failed to apply filters: ' + error.message);
-                // Hide loading indicator
-                hideLoading();
-            });
     }
-}
+    
+    // Ensure PO button event listeners are added
+    if (typeof addPOButtonEventListeners === 'function') {
+        addPOButtonEventListeners();
+    }
+    
+    console.log('Initialization completed');
+});
 // ... existing code ...
 
-function updateConditionStatus() {
-    const items = document.querySelectorAll('.inventory-section table tbody tr');
-    const itemConditions = document.getElementById('itemConditions');
+// Function to load Purchase Orders data with filtering
+function loadPOData(page = 1) {
+    showLoading();
+    
+    // Get filter values
+    const searchTerm = document.getElementById('poSearchInput')?.value || '';
+    const supplierFilter = document.getElementById('poSupplierFilter')?.value || '';
+    const dateFilter = document.getElementById('poDateFilter')?.value || '';
+    
+    fetch(`get_po_data.php?page=${page}&search=${encodeURIComponent(searchTerm)}&supplier=${encodeURIComponent(supplierFilter)}&date_range=${encodeURIComponent(dateFilter)}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(data => {
+            hideLoading();
+            displayPOData(data.pos, data.currentPage, data.totalPages, data.total);
+            
+            // Populate supplier filter options if they don't exist yet
+            if (data.suppliers && data.suppliers.length > 0) {
+                populateSupplierFilter(data.suppliers);
+            }
+        })
+        .catch(error => {
+            hideLoading();
+            console.error('Error loading PO data:', error);
+            Swal.fire('Error', 'Failed to load purchase orders. Please try again.', 'error');
+        });
+}
 
-    // If the condition container doesn't exist, log and return
-    if (!itemConditions) {
-        console.warn('Item condition container not found in DOM');
-        return;
+// Function to populate the supplier filter dropdown
+function populateSupplierFilter(suppliers) {
+    const supplierFilter = document.getElementById('poSupplierFilter');
+    if (!supplierFilter || supplierFilter.options.length > 1) return; // Skip if already populated
+    
+    // Clear existing options except the first one (All Suppliers)
+    while (supplierFilter.options.length > 1) {
+        supplierFilter.remove(1);
     }
-
-    const conditionCounts = {
-        'New': 0,
-        'Good': 0,
-        'Fair': 0,
-        'Poor': 0
-    };
-
-    items.forEach(item => {
-        // Skip if this is a special message row (like 'No items found')
-        if (item.cells.length < 5) return;
-
-        const conditionCell = item.querySelector('td[data-condition]') || 
-                             item.cells[item.cells.length - 4] || // Try a common position for condition
-                             item.querySelector('td.condition-cell');
-                             
-        if (!conditionCell) return;
-
-        const condition = conditionCell.textContent.trim();
-        if (conditionCounts.hasOwnProperty(condition)) {
-            conditionCounts[condition]++;
+    
+    // Add supplier options
+    suppliers.forEach(supplier => {
+        if (supplier) {
+            const option = document.createElement('option');
+            option.value = supplier;
+            option.textContent = supplier;
+            supplierFilter.appendChild(option);
         }
     });
-
-    itemConditions.innerHTML = Object.entries(conditionCounts)
-        .map(([condition, count]) => {
-            const badgeClass = {
-                'New': 'success',
-                'Good': 'primary',
-                'Fair': 'warning',
-                'Poor': 'danger'
-            }[condition] || 'secondary';
-
-            return `
-<div class="list-group-item condition-item">
-<div class="d-flex justify-content-between align-items-center">
-<div>
-<i class="bi bi-circle-fill text-${badgeClass}"></i>
-<span class="ms-2">${condition}</span>
-</div>
-<span class="badge bg-${badgeClass} rounded-pill">${count}</span>
-</div>
-</div>`;
-        }).join('');
-
-    // Update total count for inventory summary if it exists
-    const totalItemsCount = document.getElementById('totalItemsCount');
-    if (totalItemsCount) {
-        const total = Object.values(conditionCounts).reduce((a, b) => a + b, 0);
-        totalItemsCount.textContent = total.toString();
-    }
 }
-function checkWarrantyStatus() {
-    console.log('Checking warranty status for inventory items');
 
-    // Get all inventory items from both table and modal
-    const inventoryItems = document.querySelectorAll('.inventory-item, .item-row, #inventoryModal .modal-body tr');
+// Add event listeners to PO filters
+document.addEventListener('DOMContentLoaded', function() {
+    // Existing code...
+    
+    // Add filter event listeners for PO section
+    const poSearchInput = document.getElementById('poSearchInput');
+    const poSupplierFilter = document.getElementById('poSupplierFilter');
+    const poDateFilter = document.getElementById('poDateFilter');
+    
+    if (poSearchInput) {
+        poSearchInput.addEventListener('input', debounce(() => loadPOData(1), 500));
+    }
+    
+    if (poSupplierFilter) {
+        poSupplierFilter.addEventListener('change', () => loadPOData(1));
+    }
+    
+    if (poDateFilter) {
+        poDateFilter.addEventListener('change', () => loadPOData(1));
+    }
+});
 
-    if (!inventoryItems || inventoryItems.length === 0) {
-        console.log('No inventory items found to check warranty');
+// Function to display PO data in the table
+function displayPOData(poData, currentPage, totalPages, total) {
+    const poTableBody = document.getElementById('poTableBody');
+    const pageInfo = document.getElementById('poPageInfo');
+    const prevBtn = document.getElementById('poPrevBtn');
+    const nextBtn = document.getElementById('poNextBtn');
+    
+    if (!poTableBody) {
+        console.error('PO table body not found');
         return;
     }
-
-    console.log(`Found ${inventoryItems.length} inventory items to check warranty status`);
-
-    // Process each item
-    inventoryItems.forEach(item => {
-        try {
-            // Get all possible status elements (both in table and modal)
-            const statusElements = [
-                item.querySelector('.warranty-status'),
-                item.querySelector('.badge-warranty'),
-                item.querySelector('td.warranty-column .badge'),
-                item.querySelector('[data-warranty-status]')
-            ].filter(el => el); // Remove null elements
-
-            if (statusElements.length === 0) {
-                console.log('No warranty status element found for item');
-                return;
-            }
-
-            // Update each status element found
-            statusElements.forEach(statusElement => {
-                // Remove all existing badge classes
-                statusElement.classList.remove('bg-success', 'bg-warning', 'bg-danger', 'bg-secondary');
-
-                // Get the current status text
-                const currentStatus = statusElement.textContent.trim().toUpperCase();
-                
-                // If current status is EXPIRED, keep it EXPIRED, otherwise show as ACTIVE
-                if (currentStatus === 'EXPIRED') {
-                    statusElement.textContent = 'EXPIRED';
-                    statusElement.classList.add('badge', 'bg-danger');
+    
+    // Ensure the table has the proper classes for styling
+    const poTable = document.getElementById('poTable');
+    if (poTable) {
+        // Add the enhanced styling classes to match PAR and Inventory tables
+        poTable.classList.add('table-hover', 'enhanced-table');
+        poTable.classList.remove('table-dark', 'table-striped-dark');
+    }
+    
+    // Clear the table
+    poTableBody.innerHTML = '';
+    
+    if (poData.length === 0) {
+        // No data found
+        const emptyRow = document.createElement('tr');
+        emptyRow.innerHTML = `<td colspan="5" class="text-center py-4">No purchase orders found</td>`;
+        poTableBody.appendChild(emptyRow);
     } else {
-                    statusElement.textContent = 'ACTIVE';
-                    statusElement.classList.add('badge', 'bg-success');
+        // Add data rows
+        poData.forEach(po => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${po.po_no || 'N/A'}</td>
+                <td>${po.supplier_name || 'N/A'}</td>
+                <td>${po.formatted_date || 'N/A'}</td>
+                <td class="text-end fw-medium">${po.formatted_amount || '₱0.00'}</td>
+                <td class="text-center">
+                    <div class="action-buttons">
+                        <button class="btn btn-sm btn-view" onclick="viewPO(${po.po_id})" title="View">
+                            <i class="bi bi-eye"></i>
+                        </button>
+                        <button class="btn btn-sm btn-edit" onclick="editPO(${po.po_id})" title="Edit">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <button class="btn btn-sm btn-delete" onclick="deletePO(${po.po_id})" title="Delete">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            `;
+            poTableBody.appendChild(row);
+        });
+    }
+    
+    // Update pagination info
+    if (pageInfo) {
+        const start = (currentPage - 1) * 10 + 1;
+        const end = Math.min(start + poData.length - 1, total);
+        pageInfo.textContent = `Showing ${start}-${end} of ${total} purchase orders`;
+    }
+    
+    // Update pagination buttons
+    if (prevBtn) {
+        prevBtn.disabled = currentPage <= 1;
+        prevBtn.onclick = () => loadPOData(currentPage - 1);
+    }
+    
+    if (nextBtn) {
+        nextBtn.disabled = currentPage >= totalPages;
+        nextBtn.onclick = () => loadPOData(currentPage + 1);
+    }
+}
+
+// ... existing code ...
+
+// Fix for sections disappearing and ensure proper section handling
+(function() {
+    // Section stabilizer - ensures sections don't disappear
+    function stabilizeSections() {
+        console.log('Running section stabilizer');
+        
+        // Get the current active section from localStorage
+        const activeSection = localStorage.getItem('activeSection') || 'dashboard';
+        
+        // Make sure all sections are properly initialized
+        const sections = ['dashboard', 'inventory', 'po', 'par'];
+        const sectionElements = document.querySelectorAll('.dashboard-section, .inventory-section, .po-section, .par-section');
+        
+        // First ensure all section elements exist and have proper styling
+        if (sectionElements.length > 0) {
+            sectionElements.forEach(section => {
+                // Make sure sections have block display style when visible
+                section.style.display = section.classList.contains('d-none') ? 'none' : 'block';
+            });
+        } else {
+            console.warn('No section elements found to stabilize');
+        }
+        
+        // Force refresh the active section if needed
+        const currentVisibleSection = document.querySelector('.dashboard-section:not(.d-none), .inventory-section:not(.d-none), .po-section:not(.d-none), .par-section:not(.d-none)');
+        
+        if (!currentVisibleSection) {
+            console.warn('No visible section detected, restoring active section');
+            setActiveSection(activeSection, true);
+        }
+        
+        // Make sure nav links are properly set
+        const activeNavLink = document.querySelector('.nav-link.active');
+        if (!activeNavLink) {
+            const targetLink = document.querySelector(`#${activeSection}-link`);
+            if (targetLink) {
+                targetLink.classList.add('active');
+            }
+        }
+    }
+    
+    // Fix section display when sections disappear
+    function fixSectionDisplay() {
+        const knownSections = {
+            '.dashboard-section': 'dashboard',
+            '.inventory-section': 'inventory',
+            '.po-section': 'po',
+            '.par-section': 'par'
+        };
+        
+        // Check if any sections are still visible
+        let visibleSectionFound = false;
+        
+        for (const sectionSelector in knownSections) {
+            const section = document.querySelector(sectionSelector);
+            if (section && !section.classList.contains('d-none') && section.style.display !== 'none') {
+                visibleSectionFound = true;
+                break;
+            }
+        }
+        
+        // If no section is visible, restore the last known active section
+        if (!visibleSectionFound) {
+            const activeSection = localStorage.getItem('activeSection') || 'dashboard';
+            console.warn(`No visible sections found, restoring ${activeSection}`);
+            setActiveSection(activeSection, true);
+        }
+    }
+    
+    // Monitor for section visibility issues
+    function monitorSectionVisibility() {
+        stabilizeSections();
+        
+        // Set up a MutationObserver to watch for changes to section visibility
+        const observer = new MutationObserver(mutations => {
+            let needsCheck = false;
+            
+            mutations.forEach(mutation => {
+                if (mutation.type === 'attributes' && 
+                    (mutation.attributeName === 'class' || mutation.attributeName === 'style')) {
+                    needsCheck = true;
                 }
             });
-
-            // Remove any days-left display since we're not using dates anymore
-            const daysLeftElement = item.querySelector('.days-left');
-            if (daysLeftElement) {
-                daysLeftElement.remove();
-            }
-        } catch (error) {
-            console.error('Error checking warranty for item:', error);
-        }
-    });
-}
-function updateInventoryTable(data) {
-    console.log('Updating inventory table with data:', data);
-
-    // Get the table body element
-    const tableBody = document.getElementById('inventoryTableBody');
-    if (!tableBody) {
-        console.error('Inventory table body not found');
-        return;
-    }
-
-    // Clear existing rows
-    tableBody.innerHTML = '';
-
-    // Check if data is valid
-    if (!data || (!Array.isArray(data) && !data.data)) {
-        console.error('Invalid inventory data format:', data);
-        tableBody.innerHTML = `<tr><td colspan="11" class="text-center">No inventory data available</td></tr>`;
-        return;
-    }
-
-    // Extract the data array
-    const items = Array.isArray(data) ? data : (data.data || []);
-
-    if (items.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan="11" class="text-center">No inventory items found</td></tr>`;
-        return;
-    }
-
-    // Add rows for each inventory item
-    items.forEach(item => {
-        const row = document.createElement('tr');
-        row.classList.add('inventory-item');
-
-        // Format dates if available
-        const purchaseDate = item.purchase_date ? new Date(item.purchase_date).toLocaleDateString() : 'N/A';
-        const warrantyDate = item.warranty_expiration ? new Date(item.warranty_expiration).toLocaleDateString() : 'N/A';
-
-        // Add data attribute for warranty date
-        if (item.warranty_expiration) {
-            row.setAttribute('data-warranty-date', item.warranty_expiration);
-        }
-        
-        // Get condition badge class
-        const conditionClass = getConditionBadgeClass(item.condition || 'Unknown');
-
-        // Determine warranty status and badge class
-        let warrantyStatus = 'ACTIVE';
-        let warrantyBadgeClass = 'bg-success';
-        
-        if (item.warranty_expiration) {
-            const today = new Date();
-            const expiryDate = new Date(item.warranty_expiration);
             
-            if (expiryDate < today) {
-                warrantyStatus = 'EXPIRED';
-                warrantyBadgeClass = 'bg-danger';
+            if (needsCheck) {
+                fixSectionDisplay();
+            }
+        });
+        
+        // Watch all section elements
+        document.querySelectorAll('.dashboard-section, .inventory-section, .po-section, .par-section').forEach(section => {
+            observer.observe(section, { attributes: true });
+        });
+        
+        return observer;
+    }
+    
+    // Initialize section stability features when DOM is ready
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initial stabilization
+        stabilizeSections();
+        
+        // Start monitoring
+        const observer = monitorSectionVisibility();
+        
+        // Periodically check section visibility as a backup
+        setInterval(stabilizeSections, 5000);
+        
+        // Clean up on page unload
+        window.addEventListener('beforeunload', function() {
+            observer.disconnect();
+        });
+    });
+    
+    // Ensure sidebar navigation works correctly
+    document.querySelectorAll('.nav-link').forEach(link => {
+        // Remove any existing click handlers to prevent duplicates
+        const clone = link.cloneNode(true);
+        link.parentNode.replaceChild(clone, link);
+        
+        // Add fresh click handler
+        clone.addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            const section = this.id.replace('-link', '');
+            console.log(`Nav link clicked for section: ${section}`);
+            
+            // Set active section with a slight delay to ensure DOM manipulation completes
+            setTimeout(() => {
+                setActiveSection(section);
+            }, 10);
+        });
+    });
+})();
+
+// ... existing code ...
+
+// Improved section visibility management and sidebar navigation fixing
+(function() {
+    // Fix for condition badges - apply consistently to all condition elements
+    function fixConditionBadges() {
+        console.log('Fixing condition badges');
+        
+        // Update all condition cells in tables
+        document.querySelectorAll('td[data-condition], .condition-badge, .badge[data-condition]').forEach(element => {
+            if (!element) return;
+            
+            const condition = element.textContent.trim();
+            // Remove all existing badge classes
+            element.classList.remove('bg-success', 'bg-info', 'bg-warning', 'bg-danger', 'bg-secondary', 'text-dark');
+            
+            // Add appropriate badge class
+            switch(condition) {
+                case 'New':
+                    element.classList.add('bg-success');
+                    break;
+                case 'Good': 
+                    element.classList.add('bg-info');
+                    break;
+                case 'Fair':
+                    element.classList.add('bg-warning');
+                    element.classList.add('text-dark');
+                    break;
+                case 'Poor':
+                    element.classList.add('bg-danger');
+                    break;
+                default:
+                    element.classList.add('bg-secondary');
+            }
+            
+            // Ensure it has badge class
+            if (!element.classList.contains('badge')) {
+                element.classList.add('badge');
+            }
+        });
+    }
+    
+    // Ensure consistent condition badge function across the application
+    function getConditionBadgeClass(condition) {
+        switch(condition) {
+            case 'New': return 'bg-success';
+            case 'Good': return 'bg-info';
+            case 'Fair': return 'bg-warning text-dark';
+            case 'Poor': return 'bg-danger';
+            default: return 'bg-secondary';
+        }
+    }
+    
+    // Section stabilizer - ensures sections don't disappear
+    function stabilizeSections() {
+        console.log('Running section stabilizer');
+        
+        // Get the current active section from localStorage
+        const activeSection = localStorage.getItem('activeSection') || 'dashboard';
+        
+        // Make sure all sections are properly initialized
+        const sectionSelectors = ['.dashboard-section', '.inventory-section', '.po-section', '.par-section'];
+        const sectionElements = document.querySelectorAll(sectionSelectors.join(', '));
+        
+        // First ensure all section elements exist and have proper styling
+        if (sectionElements.length > 0) {
+            sectionElements.forEach(section => {
+                // Make sure sections have block display style when visible
+                if (!section.classList.contains('d-none')) {
+                    section.style.display = 'block';
+                }
+            });
+        } else {
+            console.warn('No section elements found to stabilize');
+        }
+        
+        // Force refresh the active section if needed
+        const currentVisibleSection = document.querySelector('.dashboard-section:not(.d-none), .inventory-section:not(.d-none), .po-section:not(.d-none), .par-section:not(.d-none)');
+        
+        if (!currentVisibleSection) {
+            console.warn('No visible section detected, restoring active section');
+            setActiveSection(activeSection, true);
+        }
+        
+        // Make sure nav links are properly set
+        const activeNavLink = document.querySelector('.nav-link.active');
+        if (!activeNavLink) {
+            const targetLink = document.querySelector(`#${activeSection}-link`);
+            if (targetLink) {
+                targetLink.classList.add('active');
             }
         }
-
-        row.innerHTML = `
-            <td class="text-center">
-                <div class="btn-group btn-group-sm">
-                    <button class="btn btn-sm btn-primary edit-item" data-id="${item.item_id}">
-                        <i class="bi bi-pencil-square"></i>
-                    </button>
-                    <button class="btn btn-sm btn-danger delete-item" data-id="${item.item_id}">
-                        <i class="bi bi-trash"></i>
-                    </button>
-                </div>
-            </td>
-            <td>${item.item_id || ''}</td>
-            <td>${item.item_name || ''}</td>
-            <td>${item.brand_model || ''}</td>
-            <td>${item.serial_number || ''}</td>
-            <td>${purchaseDate}</td>
-            <td class="warranty-column">
-                <span class="badge warranty-status ${warrantyBadgeClass}">${warrantyStatus}</span>
-            </td>
-            <td>${item.assigned_to || ''}</td>
-            <td>${item.location || ''}</td>
-            <td><span class="badge ${conditionClass}">${item.condition || 'Unknown'}</span></td>
-            <td>${item.notes || ''}</td>
-        `;
-
-        tableBody.appendChild(row);
+        
+        // Fix condition badges
+        fixConditionBadges();
+    }
+    
+    // Monitor for section visibility issues
+    function monitorSectionVisibility() {
+        console.log('Starting section visibility monitoring');
+        
+        // Set up a MutationObserver to watch for changes to section visibility
+        const observer = new MutationObserver(mutations => {
+            let needsCheck = false;
+            
+            mutations.forEach(mutation => {
+                if (mutation.type === 'attributes' && 
+                    (mutation.attributeName === 'class' || mutation.attributeName === 'style')) {
+                    needsCheck = true;
+                }
+            });
+            
+            if (needsCheck) {
+                stabilizeSections();
+            }
+        });
+        
+        // Watch all section elements
+        document.querySelectorAll('.dashboard-section, .inventory-section, .po-section, .par-section').forEach(section => {
+            observer.observe(section, { attributes: true });
+        });
+        
+        return observer;
+    }
+    
+    // Initialize section stability features and fixed sidebar navigation
+    function initSectionStability() {
+        // Initial stabilization
+        stabilizeSections();
+        
+        // Start monitoring for section visibility changes
+        const observer = monitorSectionVisibility();
+        
+        // Periodically check section visibility as a backup
+        const stabilityInterval = setInterval(stabilizeSections, 3000);
+        
+        // Fix sidebar navigation links
+        document.querySelectorAll('.nav-link').forEach(link => {
+            // Remove any existing click handlers to prevent duplicates
+            const clone = link.cloneNode(true);
+            link.parentNode.replaceChild(clone, link);
+            
+            // Add fresh click handler with improved stability
+            clone.addEventListener('click', function(e) {
+                e.preventDefault();
+                
+                const section = this.id.replace('-link', '');
+                console.log(`Nav link clicked for section: ${section}`);
+                
+                // Set active section immediately but protect against race conditions
+                if (!window.sectionChanging) {
+                    window.sectionChanging = true;
+                    
+                    try {
+                        setActiveSection(section);
+                    } finally {
+                        // Reset the flag after a short delay
+                        setTimeout(() => {
+                            window.sectionChanging = false;
+                        }, 500);
+                    }
+                }
+            });
+        });
+        
+        // Clean up on page unload
+        window.addEventListener('beforeunload', function() {
+            clearInterval(stabilityInterval);
+            observer.disconnect();
+        });
+    }
+    
+    // Run on DOM content loaded
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initSectionStability);
+    } else {
+        // DOM already loaded, run immediately
+        initSectionStability();
+    }
+    
+    // Also run on window load to handle late-loading resources
+    window.addEventListener('load', function() {
+        // Small delay to allow other load handlers to complete
+        setTimeout(stabilizeSections, 200);
     });
+    
+    // Override getConditionBadgeClass globally
+    window.getConditionBadgeClass = getConditionBadgeClass;
+})();
 
-    // Add event listeners to the action buttons
-    addActionButtonListeners();
+// ... existing code ...
 
-    // Check warranty status after adding rows
-    checkWarrantyStatus();
-}
-
-window.viewPO = viewPO;
-window.viewPAR = viewPAR;
-
+// Enhanced dashboard display and table visibility management
+(function() {
+    // Tables to monitor for visibility issues
+    const criticalTables = {
+        inventory: ['.inventory-table', '#inventory-table', '.inventory-data-table'],
+        po: ['.po-table', '#po-table', '.po-data-table', '.purchase-orders-table'],
+        par: ['.par-table', '#par-table', '.par-data-table']
+    };
+    
+    // Design elements to ensure visibility
+    const designElements = {
+        inventory: ['.inventory-cards', '.inventory-stats', '.inventory-filters'],
+        po: ['.po-cards', '.po-stats', '.po-status-cards', '.po-filters'],
+        dashboard: ['.stats-cards', '.dashboard-charts', '.status-cards']
+    };
+    
+    // Fix table visibility issues
+    function fixTableVisibility() {
+        console.log('Checking and fixing table visibility');
+        
+        // Get current active section
+        const activeSection = localStorage.getItem('activeSection') || 'dashboard';
+        
+        // Only proceed if we're in a section with tables
+        if (!['inventory', 'po', 'par'].includes(activeSection)) {
+            return;
+        }
+        
+        // Check tables in the active section
+        if (criticalTables[activeSection]) {
+            let tableFound = false;
+            
+            // Check if any table is visible
+            for (const selector of criticalTables[activeSection]) {
+                const table = document.querySelector(selector);
+                if (table) {
+                    // Ensure table is visible
+                    if (table.style.display === 'none') {
+                        table.style.display = 'table';
+                    }
+                    
+                    // Remove any d-none class
+                    if (table.classList.contains('d-none')) {
+                        table.classList.remove('d-none');
+                    }
+                    
+                    tableFound = true;
+                }
+            }
+            
+            // If no table found, try reloading data
+            if (!tableFound) {
+                console.warn(`No visible tables found for ${activeSection}, reloading data`);
+                
+                // Trigger data reload
+                if (activeSection === 'inventory' && typeof loadInventoryData === 'function') {
+                    loadInventoryData();
+                } else if (activeSection === 'po' && typeof loadPOData === 'function') {
+                    loadPOData();
+                } else if (activeSection === 'par' && typeof loadPARData === 'function') {
+                    loadPARData();
+                }
+            }
+        }
+        
+        // Fix design elements
+        if (designElements[activeSection]) {
+            for (const selector of designElements[activeSection]) {
+                const elements = document.querySelectorAll(selector);
+                elements.forEach(element => {
+                    if (element) {
+                        // Ensure elements are visible
+                        if (element.style.display === 'none') {
+                            element.style.display = '';
+                        }
+                        
+                        // Remove any d-none class
+                        if (element.classList.contains('d-none')) {
+                            element.classList.remove('d-none');
+                        }
+                    }
+                });
+            }
+        }
+    }
+    
+    // Force proper table and card rendering after section change
+    function enhanceSetActiveSection() {
+        const originalSetActiveSection = window.setActiveSection;
+        
+        if (typeof originalSetActiveSection !== 'function') {
+            console.error('Cannot enhance setActiveSection - function not found');
+            return;
+        }
+        
+        // Override the original function
+        window.setActiveSection = function(section, skipSave = false) {
+            console.log('Enhanced setActiveSection called for: ' + section);
+            
+            // Call the original function
+            originalSetActiveSection(section, skipSave);
+            
+            // After a short delay, check and fix table visibility
+            setTimeout(() => {
+                fixTableVisibility();
+                
+                // Apply enhanced table styling
+                if (typeof enhance3DTables === 'function') {
+                    enhance3DTables();
+                }
+                
+                // Fix condition badges
+                if (typeof fixConditionBadges === 'function') {
+                    fixConditionBadges();
+                }
+            }, 300);
+        };
+    }
+    
+    // Initialize enhancement when DOM is loaded
+    function initTableVisibilityFix() {
+        console.log('Initializing enhanced dashboard display');
+        
+        // Enhance setActiveSection
+        enhanceSetActiveSection();
+        
+        // Set up periodic checks for table visibility
+        setInterval(fixTableVisibility, 2000);
+        
+        // Fix tables when clicked on tab
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.addEventListener('click', function() {
+                // Short delay to allow section change to complete
+                setTimeout(fixTableVisibility, 500);
+            });
+        });
+        
+        // Initial check
+        setTimeout(fixTableVisibility, 1000);
+    }
+    
+    // Run immediately if DOM is already loaded
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initTableVisibilityFix);
+    } else {
+        initTableVisibilityFix();
+    }
+});
 
